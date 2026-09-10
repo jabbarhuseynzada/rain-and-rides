@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc
 
 up:
 	$(COMPOSE) up -d
@@ -32,3 +32,7 @@ psql:
 # Deletes the database volume too, so all loaded data is lost
 clean:
 	$(COMPOSE) down -v
+
+# Download one month of taxi data:  make ingest-tlc YEAR=2025 MONTH=1
+ingest-tlc:
+	$(COMPOSE) exec airflow-scheduler python -m ingestion.tlc --year $(YEAR) --month $(MONTH)
