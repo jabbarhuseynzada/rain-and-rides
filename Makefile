@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather
 
 up:
 	$(COMPOSE) up -d
@@ -40,3 +40,7 @@ ingest-tlc:
 # Download the taxi zone lookup table
 ingest-zones:
 	$(COMPOSE) exec airflow-scheduler python -m ingestion.tlc --zones	
+
+# Download one month of weather:  make ingest-weather YEAR=2025 MONTH=1
+ingest-weather:
+	$(COMPOSE) exec airflow-scheduler python -m ingestion.weather --year $(YEAR) --month $(MONTH)
