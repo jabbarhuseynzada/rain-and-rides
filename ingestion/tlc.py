@@ -17,7 +17,10 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
+from ingestion.db import record_run
 
 BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 ZONES_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
@@ -68,6 +71,18 @@ def is_valid_zone_csv(path: Path) -> bool:
     return b"LocationID" in header
 
 
+# ---------------------------------------------------------------- row counts (for the ingestion log)
+
+def parquet_row_count(path: Path) -> int:
+    """Read the row count from the Parquet footer, without loading the data."""
+    return pq.read_metadata(path).num_rows
+
+
+def csv_row_count(path: Path) -> int:
+    with path.open("rb") as f:
+        return sum(1 for _ in f) - 1  # minus the header row
+
+
 # ---------------------------------------------------------------- shared download logic
 
 def remote_size(url: str) -> int | None:
@@ -80,15 +95,16 @@ def remote_size(url: str) -> int | None:
     return int(size) if size else None
 
 
-def download_file(url: str, dest: Path, validate: Callable[[Path], bool], force: bool = False) -> Path:
-    """Download url to dest. Safe to run again: a complete file is never downloaded twice."""
+def download_file(url: str, dest: Path, validate: Callable[[Path], bool], force: bool = False) -> tuple[Path, str]:
+    """Download url to dest. Safe to run again: a complete file is never downloaded twice.
+    Returns the path and a status: "downloaded" or "skipped"."""
     expected = remote_size(url)
 
     # Idempotency: skip if we already have the complete file
     if dest.exists() and not force:
         if expected is None or dest.stat().st_size == expected:
             log.info("Skip: %s already downloaded (%.1f MB)", dest.name, dest.stat().st_size / 1e6)
-            return dest
+            return dest, "skipped"
         log.warning("Size mismatch for %s, downloading again", dest.name)
 
     log.info("Downloading %s", url)
@@ -106,18 +122,22 @@ def download_file(url: str, dest: Path, validate: Callable[[Path], bool], force:
             raise IOError(f"{dest.name} failed validation ({validate.__name__})")
 
     log.info("Saved %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
-    return dest
+    return dest, "downloaded"
 
 
 # ---------------------------------------------------------------- public functions (Airflow will call these)
 
 def download_month(taxi_type: str, year: int, month: int, force: bool = False) -> Path:
-    return download_file(build_url(taxi_type, year, month), build_path(taxi_type, year, month),
-                         is_valid_parquet, force)
+    path, status = download_file(build_url(taxi_type, year, month), build_path(taxi_type, year, month),
+                                 is_valid_parquet, force)
+    record_run(f"tlc_{taxi_type}", f"{year}-{month:02d}", path, status, parquet_row_count(path))
+    return path
 
 
 def download_zone_lookup(force: bool = False) -> Path:
-    return download_file(ZONES_URL, zones_path(), is_valid_zone_csv, force)
+    path, status = download_file(ZONES_URL, zones_path(), is_valid_zone_csv, force)
+    record_run("tlc_zones", None, path, status, csv_row_count(path))
+    return path
 
 
 # ---------------------------------------------------------------- command line

@@ -14,6 +14,7 @@ import logging
 from pathlib import Path
 
 from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
+from ingestion.db import record_run
 
 API_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country}"
 
@@ -49,6 +50,7 @@ def download_year(year: int, country: str = "US", force: bool = False) -> Path:
     dest = build_path(year, country)
     if dest.exists() and not force:
         log.info("Skip: %s already downloaded", dest.name)
+        record_run("holidays", str(year), dest, "skipped", len(json.loads(dest.read_bytes())))
         return dest
 
     raw = fetch_year(year, country)
@@ -58,6 +60,7 @@ def download_year(year: int, country: str = "US", force: bool = False) -> Path:
     with atomic_output(dest) as tmp:
         tmp.write_bytes(raw)
     log.info("Saved %s (%d holidays)", dest, len(payload))
+    record_run("holidays", str(year), dest, "downloaded", len(payload))
     return dest
 
 

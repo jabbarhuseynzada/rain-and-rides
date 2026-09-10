@@ -19,6 +19,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
+from ingestion.db import record_run
 
 API_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -94,12 +95,18 @@ def validate(payload: dict, year: int, month: int) -> None:
         raise ValueError("Some hours have no data; the month may not be complete in the archive yet")
 
 
+def hour_count(path: Path) -> int:
+    return len(json.loads(path.read_bytes())["hourly"]["time"])
+
+
 def download_month(year: int, month: int, force: bool = False) -> Path:
     """Fetch, validate and save one month. Safe to run again."""
     dest = build_path(year, month)
+    period = f"{year}-{month:02d}"
     if dest.exists() and not force:
         # Only validated files ever get their final name, so an existing file is complete
         log.info("Skip: %s already downloaded", dest.name)
+        record_run("weather", period, dest, "skipped", hour_count(dest))
         return dest
 
     raw = fetch_month(year, month)
@@ -110,6 +117,7 @@ def download_month(year: int, month: int, force: bool = False) -> Path:
     with atomic_output(dest) as tmp:
         tmp.write_bytes(raw)
     log.info("Saved %s (%d hours)", dest, len(payload["hourly"]["time"]))
+    record_run("weather", period, dest, "downloaded", len(payload["hourly"]["time"]))
     return dest
 
 
