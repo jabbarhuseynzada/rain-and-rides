@@ -17,13 +17,11 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-import requests
+from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
 
 BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 ZONES_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/airflow/data"))
 CHUNK_SIZE = 1024 * 1024  # write the download to disk 1 MB at a time
-TIMEOUT = (10, 60)        # seconds: (connecting, waiting for data)
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +72,7 @@ def is_valid_zone_csv(path: Path) -> bool:
 
 def remote_size(url: str) -> int | None:
     """Ask the server how big the file is, without downloading it."""
-    resp = requests.head(url, timeout=TIMEOUT, allow_redirects=True)
+    resp = get_session().head(url, timeout=TIMEOUT, allow_redirects=True)
     if resp.status_code in (403, 404):
         raise NotPublishedError(f"Not available (HTTP {resp.status_code}): {url}")
     resp.raise_for_status()
@@ -93,26 +91,20 @@ def download_file(url: str, dest: Path, validate: Callable[[Path], bool], force:
             return dest
         log.warning("Size mismatch for %s, downloading again", dest.name)
 
-    # Download to a temporary .part file first...
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
     log.info("Downloading %s", url)
-    with requests.get(url, stream=True, timeout=TIMEOUT) as resp:
-        resp.raise_for_status()
-        with tmp.open("wb") as f:
-            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
-                f.write(chunk)
+    with atomic_output(dest) as tmp:
+        with get_session().get(url, stream=True, timeout=TIMEOUT) as resp:
+            resp.raise_for_status()
+            with tmp.open("wb") as f:
+                for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
+                    f.write(chunk)
 
-    # ...check it...
-    if expected is not None and tmp.stat().st_size != expected:
-        tmp.unlink()
-        raise IOError(f"Incomplete download for {dest.name}: expected {expected} bytes")
-    if not validate(tmp):
-        tmp.unlink()
-        raise IOError(f"{dest.name} failed validation ({validate.__name__})")
+        # Any error raised here deletes the .part file, so dest never appears
+        if expected is not None and tmp.stat().st_size != expected:
+            raise IOError(f"Incomplete download for {dest.name}: expected {expected} bytes")
+        if not validate(tmp):
+            raise IOError(f"{dest.name} failed validation ({validate.__name__})")
 
-    # ...and only then give it its real name. A half-finished file can never look complete.
-    os.replace(tmp, dest)
     log.info("Saved %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
     return dest
 
@@ -142,7 +134,7 @@ def main() -> None:
     if not args.zones and (args.year is None or args.month is None):
         parser.error("--year and --month are required (or use --zones)")
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    setup_logging()
     try:
         if args.zones:
             download_zone_lookup(args.force)

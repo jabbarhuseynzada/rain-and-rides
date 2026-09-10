@@ -11,14 +11,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 from pathlib import Path
 
-import requests
+from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
 
 API_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country}"
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/airflow/data"))
-TIMEOUT = (10, 30)  # seconds: (connecting, waiting for data)
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +28,7 @@ def fetch_year(year: int, country: str = "US") -> bytes:
     """Call the API for one year and return the raw response body."""
     url = API_URL.format(year=year, country=country)
     log.info("Requesting %s", url)
-    resp = requests.get(url, timeout=TIMEOUT)
+    resp = get_session().get(url, timeout=TIMEOUT)
     resp.raise_for_status()
     return resp.content
 
@@ -58,11 +55,8 @@ def download_year(year: int, country: str = "US", force: bool = False) -> Path:
     payload = json.loads(raw)
     validate(payload, year)
 
-    # Save exactly as received, via a .part file
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    tmp.write_bytes(raw)
-    os.replace(tmp, dest)
+    with atomic_output(dest) as tmp:
+        tmp.write_bytes(raw)
     log.info("Saved %s (%d holidays)", dest, len(payload))
     return dest
 
@@ -73,7 +67,7 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="download again even if the file exists")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    setup_logging()
     download_year(args.year, force=args.force)
 
 

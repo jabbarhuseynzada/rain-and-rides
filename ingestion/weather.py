@@ -14,16 +14,13 @@ import argparse
 import calendar
 import json
 import logging
-import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-import requests
+from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setup_logging
 
 API_URL = "https://archive-api.open-meteo.com/v1/archive"
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/airflow/data"))
-TIMEOUT = (10, 60)  # seconds: (connecting, waiting for data)
 
 NYC = {"latitude": 40.71, "longitude": -74.01}
 HOURLY_VARS = [
@@ -72,7 +69,7 @@ def fetch_month(year: int, month: int) -> bytes:
         "timezone": "America/New_York",  # same local time as the taxi timestamps
     }
     log.info("Requesting weather for %s to %s", start, end)
-    resp = requests.get(API_URL, params=params, timeout=TIMEOUT)
+    resp = get_session().get(API_URL, params=params, timeout=TIMEOUT)
     if resp.status_code == 400:
         # Open-Meteo explains bad requests in a JSON "reason" field
         raise ValueError(f"Open-Meteo rejected the request: {resp.json().get('reason')}")
@@ -109,11 +106,9 @@ def download_month(year: int, month: int, force: bool = False) -> Path:
     payload = json.loads(raw)
     validate(payload, year, month)
 
-    # Save the response exactly as it arrived (bronze = untouched), via a .part file
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    tmp.write_bytes(raw)
-    os.replace(tmp, dest)
+    # Save the response exactly as it arrived (bronze = untouched)
+    with atomic_output(dest) as tmp:
+        tmp.write_bytes(raw)
     log.info("Saved %s (%d hours)", dest, len(payload["hourly"]["time"]))
     return dest
 
@@ -125,7 +120,7 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="download again even if the file exists")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    setup_logging()
     try:
         download_month(args.year, args.month, args.force)
     except NotAvailableYetError as e:
