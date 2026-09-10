@@ -10,7 +10,8 @@
 
 # Settings shared by every Airflow service (YAML anchor, reused below with <<:)
 x-airflow-common: &airflow-common
-  image: apache/airflow:3.3.1
+  build: ./airflow
+  image: rain-and-rides-airflow:3.3.1
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
