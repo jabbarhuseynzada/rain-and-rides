@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow
 
 up:
 	$(COMPOSE) up -d
@@ -48,3 +48,7 @@ ingest-weather:
 # Download one year of holidays:  make ingest-holidays YEAR=2025
 ingest-holidays:
 	$(COMPOSE) exec airflow-scheduler python -m ingestion.holidays --year $(YEAR)
+
+# Explore raw taxi data:  make explore-yellow   or   make explore-yellow PERIOD=2025-01
+explore-yellow:
+	$(COMPOSE) exec airflow-scheduler python spark_jobs/explore_yellow.py $(if $(PERIOD),--profile $(PERIOD))

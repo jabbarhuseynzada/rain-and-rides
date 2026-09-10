@@ -34,6 +34,7 @@ x-airflow-common: &airflow-common
     - ./airflow/logs:/opt/airflow/logs
     - ./data:/opt/airflow/data          # the local data lake (bronze/silver/quarantine)
     - ./ingestion:/opt/airflow/ingestion
+    - ./spark_jobs:/opt/airflow/spark_jobs
   user: "50000:0"
   depends_on: &airflow-common-depends-on
     airflow-db:
