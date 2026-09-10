@@ -1,10 +1,12 @@
-"""Download NYC TLC trip record files into the bronze layer.
+"""Download NYC TLC files into the bronze layer.
 
 Run inside the Airflow container:
-    python -m ingestion.tlc --year 2025 --month 1
+    python -m ingestion.tlc --year 2025 --month 1     # one month of trips
+    python -m ingestion.tlc --zones                   # taxi zone lookup table
 
 Files land in:
     data/bronze/tlc/<taxi_type>/year=YYYY/month=MM/<taxi_type>_tripdata_YYYY-MM.parquet
+    data/bronze/tlc/reference/taxi_zone_lookup.csv
 """
 from __future__ import annotations
 
@@ -12,11 +14,13 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import requests
 
 BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data"
+ZONES_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/airflow/data"))
 CHUNK_SIZE = 1024 * 1024  # write the download to disk 1 MB at a time
 TIMEOUT = (10, 60)        # seconds: (connecting, waiting for data)
@@ -25,8 +29,10 @@ log = logging.getLogger(__name__)
 
 
 class NotPublishedError(Exception):
-    """The requested month is not on the TLC site (yet)."""
+    """The requested file is not on the TLC site (yet)."""
 
+
+# ---------------------------------------------------------------- paths and URLs
 
 def build_url(taxi_type: str, year: int, month: int) -> str:
     return f"{BASE_URL}/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
@@ -40,15 +46,11 @@ def build_path(taxi_type: str, year: int, month: int) -> Path:
     )
 
 
-def remote_size(url: str) -> int | None:
-    """Ask the server how big the file is, without downloading it."""
-    resp = requests.head(url, timeout=TIMEOUT, allow_redirects=True)
-    if resp.status_code in (403, 404):
-        raise NotPublishedError(f"Not available (HTTP {resp.status_code}): {url}")
-    resp.raise_for_status()
-    size = resp.headers.get("Content-Length")
-    return int(size) if size else None
+def zones_path() -> Path:
+    return DATA_DIR / "bronze" / "tlc" / "reference" / "taxi_zone_lookup.csv"
 
+
+# ---------------------------------------------------------------- validators
 
 def is_valid_parquet(path: Path) -> bool:
     """Every Parquet file starts and ends with the 4 bytes b'PAR1'."""
@@ -61,10 +63,27 @@ def is_valid_parquet(path: Path) -> bool:
     return head == tail == b"PAR1"
 
 
-def download_month(taxi_type: str, year: int, month: int, force: bool = False) -> Path:
-    """Download one month. Safe to run again: a complete file is never downloaded twice."""
-    url = build_url(taxi_type, year, month)
-    dest = build_path(taxi_type, year, month)
+def is_valid_zone_csv(path: Path) -> bool:
+    """The zone lookup's header row must contain the LocationID column."""
+    with path.open("rb") as f:
+        header = f.readline()
+    return b"LocationID" in header
+
+
+# ---------------------------------------------------------------- shared download logic
+
+def remote_size(url: str) -> int | None:
+    """Ask the server how big the file is, without downloading it."""
+    resp = requests.head(url, timeout=TIMEOUT, allow_redirects=True)
+    if resp.status_code in (403, 404):
+        raise NotPublishedError(f"Not available (HTTP {resp.status_code}): {url}")
+    resp.raise_for_status()
+    size = resp.headers.get("Content-Length")
+    return int(size) if size else None
+
+
+def download_file(url: str, dest: Path, validate: Callable[[Path], bool], force: bool = False) -> Path:
+    """Download url to dest. Safe to run again: a complete file is never downloaded twice."""
     expected = remote_size(url)
 
     # Idempotency: skip if we already have the complete file
@@ -76,7 +95,7 @@ def download_month(taxi_type: str, year: int, month: int, force: bool = False) -
 
     # Download to a temporary .part file first...
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".parquet.part")
+    tmp = dest.with_name(dest.name + ".part")
     log.info("Downloading %s", url)
     with requests.get(url, stream=True, timeout=TIMEOUT) as resp:
         resp.raise_for_status()
@@ -88,9 +107,9 @@ def download_month(taxi_type: str, year: int, month: int, force: bool = False) -
     if expected is not None and tmp.stat().st_size != expected:
         tmp.unlink()
         raise IOError(f"Incomplete download for {dest.name}: expected {expected} bytes")
-    if not is_valid_parquet(tmp):
+    if not validate(tmp):
         tmp.unlink()
-        raise IOError(f"{dest.name} is not a valid Parquet file")
+        raise IOError(f"{dest.name} failed validation ({validate.__name__})")
 
     # ...and only then give it its real name. A half-finished file can never look complete.
     os.replace(tmp, dest)
@@ -98,17 +117,37 @@ def download_month(taxi_type: str, year: int, month: int, force: bool = False) -
     return dest
 
 
+# ---------------------------------------------------------------- public functions (Airflow will call these)
+
+def download_month(taxi_type: str, year: int, month: int, force: bool = False) -> Path:
+    return download_file(build_url(taxi_type, year, month), build_path(taxi_type, year, month),
+                         is_valid_parquet, force)
+
+
+def download_zone_lookup(force: bool = False) -> Path:
+    return download_file(ZONES_URL, zones_path(), is_valid_zone_csv, force)
+
+
+# ---------------------------------------------------------------- command line
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download one month of NYC TLC trip data.")
-    parser.add_argument("--year", type=int, required=True)
-    parser.add_argument("--month", type=int, required=True, choices=range(1, 13), metavar="1-12")
+    parser = argparse.ArgumentParser(description="Download NYC TLC trip data or the zone lookup table.")
+    parser.add_argument("--year", type=int)
+    parser.add_argument("--month", type=int, choices=range(1, 13), metavar="1-12")
     parser.add_argument("--taxi-type", default="yellow", choices=["yellow", "green", "fhv", "fhvhv"])
+    parser.add_argument("--zones", action="store_true", help="download the taxi zone lookup table instead")
     parser.add_argument("--force", action="store_true", help="download again even if the file exists")
     args = parser.parse_args()
 
+    if not args.zones and (args.year is None or args.month is None):
+        parser.error("--year and --month are required (or use --zones)")
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
-        download_month(args.taxi_type, args.year, args.month, args.force)
+        if args.zones:
+            download_zone_lookup(args.force)
+        else:
+            download_month(args.taxi_type, args.year, args.month, args.force)
     except NotPublishedError as e:
         log.error("%s", e)
         sys.exit(1)
