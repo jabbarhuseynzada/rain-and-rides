@@ -2,6 +2,7 @@
 
 Run inside the Airflow container:
     python spark_jobs/load_silver.py --year 2025 --month 1     # trips + weather for one month
+    python spark_jobs/load_silver.py --year 2025 --month 1 --only weather
     python spark_jobs/load_silver.py --year 2025 --holidays    # holidays for one year (small, straight from bronze)
 
 How a load works (the "staging table" pattern):
@@ -64,14 +65,16 @@ def load(df: DataFrame, target: str, batch: dict[str, int], label: str) -> None:
     print(f"  {label:<10} {target:<20} {loaded:>12,} rows loaded  (replaced {deleted:,})")
 
 
-def load_month(year: int, month: int) -> None:
+def load_month(year: int, month: int, only: str | None = None) -> None:
     spark = get_spark(f"load_silver_{year}-{month:02d}")
     part = f"year={year}/month={month:02d}"
     print(f"\n=== Loading {year}-{month:02d} into Postgres")
-    trips = spark.read.parquet(str(DATA_DIR / "silver" / "trips" / "yellow" / part))
-    load(trips, "raw.yellow_trips", {"year": year, "month": month}, "trips")
-    weather = spark.read.parquet(str(DATA_DIR / "silver" / "weather" / part))
-    load(weather, "raw.weather_hourly", {"year": year, "month": month}, "weather")
+    if only in (None, "trips"):
+        trips = spark.read.parquet(str(DATA_DIR / "silver" / "trips" / "yellow" / part))
+        load(trips, "raw.yellow_trips", {"year": year, "month": month}, "trips")
+    if only in (None, "weather"):
+        weather = spark.read.parquet(str(DATA_DIR / "silver" / "weather" / part))
+        load(weather, "raw.weather_hourly", {"year": year, "month": month}, "weather")
     spark.stop()
 
 
@@ -96,12 +99,13 @@ def main() -> None:
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, choices=range(1, 13), metavar="1-12")
     parser.add_argument("--holidays", action="store_true", help="load that year's holidays instead")
+    parser.add_argument("--only", choices=["trips", "weather"], help="load just one of the two datasets")
     args = parser.parse_args()
 
     if args.holidays:
         load_holidays(args.year)
     elif args.month:
-        load_month(args.year, args.month)
+        load_month(args.year, args.month, args.only)
     else:
         parser.error("give --month (trips + weather) or --holidays")
 

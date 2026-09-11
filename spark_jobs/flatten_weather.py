@@ -3,8 +3,11 @@
 Run inside the Airflow container:
     python spark_jobs/flatten_weather.py --year 2025 --month 1
 
-Reads   data/bronze/weather/year=YYYY/month=MM/*.json
-Writes  data/silver/weather/year=YYYY/month=MM/   one row per local New York hour
+Reads   data/bronze/weather/year=YYYY/month=MM/*.json   hourly values in UTC
+Writes  data/silver/weather/year=YYYY/month=MM/          one row per local New York hour
+
+The bronze file is in UTC and covers one extra day, so we can convert every hour to New York time
+with real daylight saving rules and then keep exactly the hours that fall inside the local month.
 """
 from __future__ import annotations
 
@@ -12,11 +15,12 @@ import argparse
 import calendar
 
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.sql.types import DoubleType, IntegerType, TimestampNTZType
 
 from spark_utils import DATA_DIR, get_spark
 
-EXPECTED_TIMEZONE = "America/New_York"  # must match the taxi timestamps, or the join is wrong
+SOURCE_TIMEZONE = "GMT"             # what ingestion/weather.py requests
+LOCAL_TIMEZONE = "America/New_York"  # what the taxi timestamps use
 
 # Open-Meteo field -> silver column (units in the name, so nobody has to guess), type
 HOURLY_FIELDS = {
@@ -37,10 +41,10 @@ def flatten_month(year: int, month: int) -> None:
 
     raw = spark.read.option("multiLine", True).json(bronze_path)
 
-    # Contract check: the hours must be New York local time
+    # Contract check: the file must be in UTC, or the conversion below would be wrong
     timezone = raw.select("timezone").first()["timezone"]
-    if timezone != EXPECTED_TIMEZONE:
-        raise ValueError(f"Weather is in {timezone}, expected {EXPECTED_TIMEZONE}")
+    if timezone != SOURCE_TIMEZONE:
+        raise ValueError(f"Weather is in {timezone}, expected {SOURCE_TIMEZONE}. Re-download with --force.")
 
     # The JSON holds parallel arrays: hourly.time[i] belongs with hourly.temperature_2m[i], and so on.
     # arrays_zip pairs them up element by element; explode turns each pair into its own row.
@@ -48,9 +52,17 @@ def flatten_month(year: int, month: int) -> None:
         F.col("hourly.time").alias("time"),
         *[F.col(f"hourly.{field}").alias(field) for field in HOURLY_FIELDS],
     )
-    hours = raw.select(F.explode(zipped).alias("h")).select(
-        F.to_timestamp_ntz(F.col("h.time"), F.lit("yyyy-MM-dd'T'HH:mm")).alias("weather_hour"),
-        *[F.col(f"h.{field}").cast(dtype).alias(name) for field, (name, dtype) in HOURLY_FIELDS.items()],
+    utc_hour = F.to_timestamp(F.col("h.time"), "yyyy-MM-dd'T'HH:mm")  # parsed as UTC (session timezone)
+    # from_utc_timestamp applies New York's real rules: UTC-5 in winter, UTC-4 in summer
+    local_hour = F.from_utc_timestamp(utc_hour, LOCAL_TIMEZONE).cast(TimestampNTZType())
+    hours = (
+        raw.select(F.explode(zipped).alias("h"))
+        .select(
+            local_hour.alias("weather_hour"),
+            *[F.col(f"h.{field}").cast(dtype).alias(name) for field, (name, dtype) in HOURLY_FIELDS.items()],
+        )
+        # the file covers an extra UTC day; keep only hours inside this local month
+        .filter((F.year("weather_hour") == year) & (F.month("weather_hour") == month))
     )
     hours.cache()
     raw_hours = hours.count()
@@ -83,7 +95,7 @@ def flatten_month(year: int, month: int) -> None:
     expected = calendar.monthrange(year, month)[1] * 24
 
     print(f"\n=== weather {year}-{month:02d}")
-    print(f"  hours in bronze JSON   {raw_hours:>6}")
+    print(f"  local hours in month   {raw_hours:>6}")
     print(f"  duplicate hours merged {raw_hours - silver_hours:>6}")
     print(f"  hours in silver        {silver_hours:>6}   (a {calendar.month_name[month]} has {expected})")
     print(f"  hours without temp     {null_temps:>6}")

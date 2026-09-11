@@ -1,4 +1,8 @@
-"""Download hourly New York weather from the Open-Meteo archive into the bronze layer.
+"""Download hourly New York weather (in UTC) from the Open-Meteo archive into the bronze layer.
+
+Why UTC: Open-Meteo applies ONE fixed UTC offset to a whole request (the offset on the day you ask),
+so local-time responses are an hour off across daylight saving changes. We ask for UTC and let
+Spark convert to New York time with real timezone rules (spark_jobs/flatten_weather.py).
 
 Run inside the Airflow container:
     python -m ingestion.weather --year 2025 --month 1
@@ -42,8 +46,10 @@ class NotAvailableYetError(Exception):
 
 
 def month_range(year: int, month: int) -> tuple[date, date]:
+    """UTC dates to request: the whole month plus the 1st of the next month, because the last
+    New York evening of a month (19:00-23:59 local) is already the next day in UTC."""
     last_day = calendar.monthrange(year, month)[1]
-    return date(year, month, 1), date(year, month, last_day)
+    return date(year, month, 1), date(year, month, last_day) + timedelta(days=1)
 
 
 def build_path(year: int, month: int) -> Path:
@@ -67,7 +73,7 @@ def fetch_month(year: int, month: int) -> bytes:
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "hourly": ",".join(HOURLY_VARS),
-        "timezone": "America/New_York",  # same local time as the taxi timestamps
+        "timezone": "GMT",  # UTC; converted to New York time in Spark
     }
     log.info("Requesting weather for %s to %s", start, end)
     resp = get_session().get(API_URL, params=params, timeout=TIMEOUT)
@@ -86,9 +92,10 @@ def validate(payload: dict, year: int, month: int) -> None:
         raise ValueError(f"Response is missing hourly fields: {missing}")
 
     hours = len(hourly["time"])
-    expected = calendar.monthrange(year, month)[1] * 24
-    if abs(hours - expected) > 1:  # allow 1 hour either way for daylight saving changes
-        raise ValueError(f"Expected about {expected} hours, got {hours}")
+    start, end = month_range(year, month)
+    expected = ((end - start).days + 1) * 24  # UTC has no daylight saving, so this is exact
+    if hours != expected:
+        raise ValueError(f"Expected {expected} hours, got {hours}")
     if any(len(hourly[field]) != hours for field in HOURLY_VARS):
         raise ValueError("Hourly fields have different lengths")
     if any(value is None for value in hourly["temperature_2m"]):
