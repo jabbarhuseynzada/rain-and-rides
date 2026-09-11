@@ -1,0 +1,39 @@
+version: 2
+
+seeds:
+  - name: taxi_zone_lookup
+    description: >
+      The 265 NYC taxi zones. A copy of TLC's taxi_zone_lookup.csv (see data/bronze/tlc/reference/)
+      with the header renamed to snake_case.
+    config:
+      column_types: {location_id: integer, borough: text, zone: text, service_zone: text}
+    columns:
+      - name: location_id
+        description: Matches pu_location_id and do_location_id in the trips. 264 and 265 mean unknown / outside NYC.
+      - name: borough
+        description: Manhattan, Queens, Brooklyn, Bronx, Staten Island, EWR, Unknown or N/A.
+      - name: zone
+        description: Neighbourhood or place name, e.g. JFK Airport.
+      - name: service_zone
+        description: Yellow Zone, Boro Zone, Airports or EWR.
+
+  - name: payment_types
+    description: Payment type codes from the TLC yellow taxi data dictionary (March 2025 edition).
+    config:
+      column_types: {payment_type: integer, payment_type_name: text}
+    columns:
+      - name: payment_type
+        description: Code used in the trips. Tips are only recorded for 1 (credit card).
+
+  - name: rate_codes
+    description: Final rate codes (RatecodeID) from the TLC yellow taxi data dictionary.
+    config:
+      column_types: {ratecode_id: integer, ratecode_name: text}
+
+  - name: weather_codes
+    description: WMO weather interpretation codes as used by Open-Meteo, grouped into broad categories.
+    config:
+      column_types: {weather_code: integer, weather_description: text, weather_category: text}
+    columns:
+      - name: weather_category
+        description: clear, cloudy, fog, drizzle, rain, snow or thunderstorm.
