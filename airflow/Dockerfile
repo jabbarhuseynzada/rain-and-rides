@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /tmp/requ
 # ---- dbt in its own virtual environment so it can't clash with Airflow's packages ----
 RUN python -m venv /opt/airflow/dbt_venv \
  && /opt/airflow/dbt_venv/bin/pip install --no-cache-dir "dbt-core~=1.10.0" "dbt-postgres~=1.10.0" \
- && ln -s /opt/airflow/dbt_venv/bin/dbt /home/airflow/.local/bin/dbt
+ && ln -s /opt/airflow/dbt_venv/bin/dbt /home/airflow/.local/bin/dbt && /opt/airflow/dbt_venv/bin/pip install --no-cache-dir "dbt-core~=1.12.0" "dbt-postgres~=1.11.0" \
 
 # ---- PostgreSQL JDBC driver, so Spark can write to the warehouse ----
 # Added at the end on purpose: Docker reuses every cached layer above, so this rebuild takes seconds
