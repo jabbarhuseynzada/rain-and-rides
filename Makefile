@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather load-silver load-holidays
 
 up:
 	$(COMPOSE) up -d
@@ -60,3 +60,11 @@ clean-trips:
 # Flatten one month of weather:  make flatten-weather YEAR=2025 MONTH=1
 flatten-weather:
 	$(COMPOSE) exec airflow-scheduler python spark_jobs/flatten_weather.py --year $(YEAR) --month $(MONTH)
+
+# Load one month of silver into Postgres:  make load-silver YEAR=2025 MONTH=1
+load-silver:
+	$(COMPOSE) exec airflow-scheduler python spark_jobs/load_silver.py --year $(YEAR) --month $(MONTH)
+
+# Load one year of holidays into Postgres:  make load-holidays YEAR=2025
+load-holidays:
+	$(COMPOSE) exec airflow-scheduler python spark_jobs/load_silver.py --year $(YEAR) --holidays
