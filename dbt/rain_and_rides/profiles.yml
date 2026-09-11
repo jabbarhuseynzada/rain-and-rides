@@ -1,0 +1,15 @@
+# How dbt connects to the warehouse. No secrets here: every value comes from the
+# WAREHOUSE_* environment variables that docker-compose.yml passes to the Airflow containers,
+# so this file is safe to commit.
+rain_and_rides:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('WAREHOUSE_HOST', 'postgres') }}"
+      port: "{{ env_var('WAREHOUSE_PORT', '5432') | int }}"
+      dbname: "{{ env_var('WAREHOUSE_DB') }}"
+      user: "{{ env_var('WAREHOUSE_USER') }}"
+      password: "{{ env_var('WAREHOUSE_PASSWORD') }}"
+      schema: staging   # default schema; dbt_project.yml sends marts and seeds elsewhere
+      threads: 4        # build up to 4 models at the same time

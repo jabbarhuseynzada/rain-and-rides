@@ -1,0 +1,28 @@
+name: rain_and_rides
+version: "1.0.0"
+profile: rain_and_rides   # which entry in profiles.yml to use
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+analysis-paths: ["analyses"]
+clean-targets: ["target", "dbt_packages"]
+
+# Where each layer of models lands in Postgres, and how it is built
+models:
+  rain_and_rides:
+    staging:          # one light model per source table: rename, cast, nothing else
+      +schema: staging
+      +materialized: view
+    intermediate:     # joins and business logic that the marts share
+      +schema: staging
+      +materialized: view
+    marts:            # the gold layer: what Metabase reads
+      +schema: marts
+      +materialized: table
+
+seeds:
+  rain_and_rides:
+    +schema: raw      # small reference CSVs are raw inputs, like the Spark-loaded tables

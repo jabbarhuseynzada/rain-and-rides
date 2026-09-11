@@ -1,0 +1,3 @@
+packages:
+  - package: dbt-labs/dbt_utils   # date_spine, surrogate keys, extra tests
+    version: [">=1.3.0", "<2.0.0"]

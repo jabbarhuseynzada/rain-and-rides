@@ -1,0 +1,42 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Tables loaded into Postgres by the Python and Spark jobs (see spark_jobs/load_silver.py).
+    schema: raw
+    config:
+      loaded_at_field: loaded_at   # when a row arrived in the warehouse
+      freshness:                   # checked by: dbt source freshness
+        warn_after: {count: 35, period: day}
+        error_after: {count: 60, period: day}
+
+    tables:
+      - name: yellow_trips
+        description: Cleaned yellow taxi trips, one row per trip (silver layer). Times are New York local time.
+        columns:
+          - name: pickup_datetime
+            description: When the meter started, New York local time without a timezone.
+          - name: pu_location_id
+            description: Pickup taxi zone, joins to the taxi zone lookup.
+          - name: payment_type
+            description: 0 Flex Fare, 1 credit card, 2 cash, 3 no charge, 4 dispute, 5 unknown, 6 voided.
+          - name: tip_pct
+            description: Tip as a percentage of the fare. Only filled for credit card trips, the only ones with recorded tips.
+
+      - name: weather_hourly
+        description: Hourly New York weather from Open-Meteo, converted from UTC to local time. One row per local hour.
+        columns:
+          - name: weather_hour
+            description: Start of the local hour. Joins to yellow_trips.pickup_hour.
+
+      - name: holidays
+        description: US public holidays from Nager.Date, including state-level ones.
+        config:
+          freshness:   # loaded once per year, so a much looser rule
+            warn_after: {count: 400, period: day}
+            error_after: null
+
+      - name: ingestion_log
+        description: One row per ingestion run (downloaded or skipped). Written by ingestion/db.py.
+        config:
+          loaded_at_field: ingested_at

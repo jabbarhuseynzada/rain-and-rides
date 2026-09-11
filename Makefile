@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather load-silver load-holidays spark-ui-tour
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather load-silver load-holidays spark-ui-tour dbt
 
 up:
 	$(COMPOSE) up -d
@@ -72,3 +72,7 @@ load-holidays:
 # Run a Spark job and keep the UI open:  make spark-ui-tour
 spark-ui-tour:
 	$(COMPOSE) exec airflow-scheduler python spark_jobs/ui_tour.py
+
+# Run any dbt command:  make dbt CMD="debug"   make dbt CMD="build"
+dbt:
+	$(COMPOSE) exec airflow-scheduler dbt $(CMD)
