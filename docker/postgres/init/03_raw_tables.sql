@@ -57,3 +57,5 @@ CREATE TABLE IF NOT EXISTS raw.holidays (
     types         TEXT,
     loaded_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS yellow_trips_loaded_at_idx ON raw.yellow_trips (loaded_at);

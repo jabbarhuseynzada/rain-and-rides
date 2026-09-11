@@ -3,3 +3,5 @@ data/
 logs/
 target/
 __pycache__/
+dbt_packages/
+.user.yml
