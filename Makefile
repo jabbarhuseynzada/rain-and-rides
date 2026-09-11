@@ -3,7 +3,7 @@ export
 
 COMPOSE = docker compose
 
-.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather load-silver load-holidays
+.PHONY: up down logs ps restart rebuild psql clean ingest-tlc ingest-zones ingest-weather ingest-holidays explore-yellow clean-trips flatten-weather load-silver load-holidays spark-ui-tour
 
 up:
 	$(COMPOSE) up -d
@@ -68,3 +68,7 @@ load-silver:
 # Load one year of holidays into Postgres:  make load-holidays YEAR=2025
 load-holidays:
 	$(COMPOSE) exec airflow-scheduler python spark_jobs/load_silver.py --year $(YEAR) --holidays
+
+# Run a Spark job and keep the UI open:  make spark-ui-tour
+spark-ui-tour:
+	$(COMPOSE) exec airflow-scheduler python spark_jobs/ui_tour.py
