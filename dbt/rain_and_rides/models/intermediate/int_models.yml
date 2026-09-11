@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_holidays_ny
+    description: >
+      Holidays that apply in New York City, one row per date: nationwide holidays plus
+      those observed in New York State. Names are combined when two fall on the same day.
+    columns:
+      - name: holiday_date
+        description: The date. Unique, so joining on it never duplicates trips.
+
+  - name: int_trips_enriched
+    description: >
+      Every trip from stg_trips with its context: the weather in its pickup hour, pickup and
+      dropoff zone names, weekend and holiday flags, and names for payment and rate codes.
+      Same row count as stg_trips.
+    columns:
+      - name: pickup_day_of_week
+        description: ISO day of week, 1 = Monday to 7 = Sunday.
+      - name: is_holiday
+        description: True when the pickup date is a New York holiday (see int_holidays_ny).
+      - name: weather_category
+        description: clear, cloudy, fog, drizzle, rain, snow or thunderstorm, from the weather_codes seed.
+      - name: precipitation_mm
+        description: Rain plus melted snow in the pickup hour. Null if the hour has no weather row.
