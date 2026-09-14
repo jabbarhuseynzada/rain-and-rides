@@ -6,6 +6,9 @@ models:
     columns:
       - name: zone_id
         description: TLC LocationID, 1 to 265.
+        data_tests:
+          - unique
+          - not_null
       - name: is_airport
         description: True for Newark (1), JFK (132) and LaGuardia (138).
       - name: is_unknown
@@ -18,6 +21,9 @@ models:
     columns:
       - name: date_key
         description: The date. Join on date_key from fct_trips.
+        data_tests:
+          - unique
+          - not_null
       - name: day_of_week
         description: ISO day of week, 1 = Monday to 7 = Sunday.
 
@@ -25,9 +31,43 @@ models:
     description: >
       One row per yellow taxi trip, with the weather in its pickup hour.
       Join to dim_zone on pickup_zone_id or dropoff_zone_id, and to dim_date on date_key.
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_trips')
     columns:
       - name: trip_id
         description: Surrogate key from stg_trips.
+        data_tests:
+          - not_null
+      - name: pickup_zone_id
+        description: Pickup zone. Joins to dim_zone.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: date_key
+        description: Pickup date. Joins to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: duration_min
+        description: Trip length in minutes. The silver rules keep 1 to 360.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 360
+      - name: total_amount
+        description: What the passenger paid in total.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: tip_pct
         description: Tip as a percentage of the fare, credit card trips only.
 
@@ -38,7 +78,19 @@ models:
     columns:
       - name: hour_key
         description: Start of the local hour. Unique.
+        data_tests:
+          - unique
+          - not_null
       - name: trips
         description: Number of trips that started in this hour. 0 when there were none.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: weather_label
         description: dry, light rain, heavy rain or snow, from the rain_label macro.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [dry, light rain, heavy rain, snow, unknown]

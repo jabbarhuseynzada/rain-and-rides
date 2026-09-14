@@ -8,18 +8,34 @@ models:
     columns:
       - name: holiday_date
         description: The date. Unique, so joining on it never duplicates trips.
+        data_tests:
+          - unique       # if this fails, every trip that day is counted twice downstream
+          - not_null
 
   - name: int_trips_enriched
     description: >
       Every trip from stg_trips with its context: the weather in its pickup hour, pickup and
       dropoff zone names, weekend and holiday flags, and names for payment and rate codes.
       Same row count as stg_trips.
+    data_tests:
+      # the join must not lose or duplicate trips
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_trips')
     columns:
       - name: pickup_day_of_week
         description: ISO day of week, 1 = Monday to 7 = Sunday.
       - name: is_holiday
         description: True when the pickup date is a New York holiday (see int_holidays_ny).
+      - name: trip_id
+        description: Surrogate key from stg_trips.
+        data_tests:
+          - not_null
       - name: weather_category
         description: clear, cloudy, fog, drizzle, rain, snow or thunderstorm, from the weather_codes seed.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [clear, cloudy, fog, drizzle, rain, snow, thunderstorm]
       - name: precipitation_mm
         description: Rain plus melted snow in the pickup hour. Null if the hour has no weather row.

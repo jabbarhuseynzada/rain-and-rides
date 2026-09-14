@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: stg_trips
+    description: >
+      Yellow taxi trips, one row per trip, renamed for readability. Bad rows were already
+      quarantined by spark_jobs/clean_trips.py, so every row here passed the silver rules.
+    columns:
+      - name: trip_id
+        description: Surrogate key built from vendor, pickup and dropoff times, zones and total amount.
+        data_tests:
+          - not_null
+          # warn instead of error: identical trips are plausible in TLC data, but we want to know
+          - unique:
+              config: {severity: warn}
+      - name: pickup_at
+        description: When the meter started, New York local time.
+      - name: pickup_hour
+        description: pickup_at truncated to the hour. Joins to stg_weather_hourly.weather_hour.
+        data_tests:
+          - not_null
+          # every trip hour must exist in the weather table, or the join loses it
+          - relationships:
+              arguments:
+                to: ref('stg_weather_hourly')
+                field: weather_hour
+      - name: pickup_location_id
+        description: Taxi zone where the trip started. Joins to the taxi_zone_lookup seed.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: location_id
+      - name: payment_type
+        description: Joins to the payment_types seed. 0 is a Flex Fare trip.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+      - name: tip_pct
+        description: Tip as a percentage of the fare, credit card trips only (the only ones with recorded tips).
+
+  - name: stg_weather_hourly
+    description: Hourly New York weather from Open-Meteo, one row per local hour.
+    columns:
+      - name: weather_hour
+        description: Start of the local hour. Joins to stg_trips.pickup_hour.
+        data_tests:
+          - unique       # a duplicate hour would double every trip in it
+          - not_null
+      - name: temperature_c
+        description: Air temperature in Celsius.
+        data_tests:
+          - not_null
+          # New York records are about -26C and 41C
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -30
+                max_value: 45
+      - name: precipitation_mm
+        description: Rain plus melted snow in this hour.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+      - name: weather_code
+        description: WMO weather code. Joins to the weather_codes seed.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('weather_codes')
+                field: weather_code
+
+  - name: stg_holidays
+    description: US public holidays from Nager.Date, including holidays observed in only some states.
+    columns:
+      - name: is_nationwide
+        description: True for federal holidays. False ones are listed in observed_in.
+      - name: observed_in
+        description: Comma-separated state codes for state-level holidays, e.g. US-NY.
+      - name: holiday_date
+        description: The date of the holiday.
+        data_tests:
+          - not_null
