@@ -70,6 +70,12 @@ models:
                 min_value: 0
       - name: tip_pct
         description: Tip as a percentage of the fare, credit card trips only.
+      - name: source_month
+        description: >
+          The monthly batch this row belongs to, e.g. 2025-01. An incremental run deletes and
+          re-inserts whole months by this key, so re-running a month replaces it.
+        data_tests:
+          - not_null
 
   - name: agg_hourly_demand
     description: >
