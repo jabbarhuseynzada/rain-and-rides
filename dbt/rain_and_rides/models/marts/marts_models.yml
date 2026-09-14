@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: dim_zone
+    description: One row per NYC taxi zone. Join on zone_id from fct_trips.
+    columns:
+      - name: zone_id
+        description: TLC LocationID, 1 to 265.
+      - name: is_airport
+        description: True for Newark (1), JFK (132) and LaGuardia (138).
+      - name: is_unknown
+        description: True for zones 264 and 265, which mean unknown or outside NYC.
+
+  - name: dim_date
+    description: >
+      One row per calendar date covered by the trips, including days with no trips.
+      Holds weekday and holiday flags plus a daily weather summary.
+    columns:
+      - name: date_key
+        description: The date. Join on date_key from fct_trips.
+      - name: day_of_week
+        description: ISO day of week, 1 = Monday to 7 = Sunday.
+
+  - name: fct_trips
+    description: >
+      One row per yellow taxi trip, with the weather in its pickup hour.
+      Join to dim_zone on pickup_zone_id or dropoff_zone_id, and to dim_date on date_key.
+    columns:
+      - name: trip_id
+        description: Surrogate key from stg_trips.
+      - name: tip_pct
+        description: Tip as a percentage of the fare, credit card trips only.
+
+  - name: agg_hourly_demand
+    description: >
+      One row per hour: trip counts and averages next to that hour's weather.
+      Hours with no trips are kept, with trips = 0. This is the table the dashboard charts.
+    columns:
+      - name: hour_key
+        description: Start of the local hour. Unique.
+      - name: trips
+        description: Number of trips that started in this hour. 0 when there were none.
+      - name: weather_label
+        description: dry, light rain, heavy rain or snow, from the rain_label macro.
