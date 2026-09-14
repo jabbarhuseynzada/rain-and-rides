@@ -1,0 +1,15 @@
+version: 2
+
+snapshots:
+  - name: snap_taxi_zones
+    description: >
+      History of the TLC taxi zone lookup. A new row is written whenever a zone's name,
+      borough or service zone changes, so past trips can be labelled with the names that
+      were correct at the time.
+    columns:
+      - name: location_id
+        description: "TLC LocationID. Not unique here: one row per version of the zone."
+      - name: dbt_valid_from
+        description: When this version of the row first appeared.
+      - name: dbt_valid_to
+        description: When it was replaced. Null means this is the current version.
