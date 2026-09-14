@@ -1,9 +1,9 @@
 """Load silver data into the Postgres warehouse (raw schema).
 
 Run inside the Airflow container:
-    python spark_jobs/load_silver.py --year 2025 --month 1     # trips + weather for one month
-    python spark_jobs/load_silver.py --year 2025 --month 1 --only weather
-    python spark_jobs/load_silver.py --year 2025 --holidays    # holidays for one year (small, straight from bronze)
+    python -m spark_jobs.load_silver --year 2025 --month 1     # trips + weather for one month
+    python -m spark_jobs.load_silver --year 2025 --month 1 --only weather
+    python -m spark_jobs.load_silver --year 2025 --holidays    # holidays for one year
 
 How a load works (the "staging table" pattern):
     1. Spark writes the batch into a staging table, e.g. raw.yellow_trips_staging (replaced every time)
@@ -20,7 +20,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from ingestion.db import connect
-from spark_utils import DATA_DIR, get_spark
+from spark_jobs.spark_utils import DATA_DIR, get_spark
 
 
 def jdbc_options() -> tuple[str, dict]:

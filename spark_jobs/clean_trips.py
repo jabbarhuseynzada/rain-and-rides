@@ -1,7 +1,7 @@
 """Clean one month of yellow taxi trips: bronze -> silver, bad rows -> quarantine.
 
 Run inside the Airflow container:
-    python spark_jobs/clean_trips.py --year 2025 --month 1
+    python -m spark_jobs.clean_trips --year 2025 --month 1
 
 Reads   data/bronze/tlc/yellow/year=YYYY/month=MM/
 Writes  data/silver/trips/yellow/year=YYYY/month=MM/       rows that pass every rule
@@ -19,7 +19,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import (DecimalType, DoubleType, IntegerType, StringType,
                                TimestampNTZType)
 
-from spark_utils import DATA_DIR, get_spark
+from spark_jobs.spark_utils import DATA_DIR, get_spark
 
 TAXI_TYPE = "yellow"
 

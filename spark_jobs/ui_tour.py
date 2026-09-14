@@ -1,7 +1,7 @@
 """A small job to watch in the Spark UI (http://localhost:4040).
 
 Run inside the Airflow container:
-    python spark_jobs/ui_tour.py
+    python -m spark_jobs.ui_tour
 
 It runs four queries on your silver trips, then keeps Spark alive until you press Enter,
 because the Spark UI only exists while a Spark application is running.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pyspark.sql import functions as F
 
-from spark_utils import DATA_DIR, get_spark
+from spark_jobs.spark_utils import DATA_DIR, get_spark
 
 TRIPS = str(DATA_DIR / "silver" / "trips" / "yellow")
 

@@ -26,6 +26,7 @@ from ingestion.common import DATA_DIR, TIMEOUT, atomic_output, get_session, setu
 from ingestion.db import record_run
 
 API_URL = "https://archive-api.open-meteo.com/v1/archive"
+REQUEST_TIMEZONE = "GMT"  # always fetch UTC; spark_jobs/flatten_weather.py converts to New York time
 
 NYC = {"latitude": 40.71, "longitude": -74.01}
 HOURLY_VARS = [
@@ -73,7 +74,7 @@ def fetch_month(year: int, month: int) -> bytes:
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "hourly": ",".join(HOURLY_VARS),
-        "timezone": "GMT",  # UTC; converted to New York time in Spark
+        "timezone": REQUEST_TIMEZONE,  # UTC; converted to New York time in Spark
     }
     log.info("Requesting weather for %s to %s", start, end)
     resp = get_session().get(API_URL, params=params, timeout=TIMEOUT)
@@ -106,15 +107,26 @@ def hour_count(path: Path) -> int:
     return len(json.loads(path.read_bytes())["hourly"]["time"])
 
 
+def is_current_format(path: Path) -> bool:
+    """True if the file was fetched in UTC. Files saved by older versions of this script used
+    New York local time, which is an hour out across daylight saving changes."""
+    try:
+        return json.loads(path.read_bytes()).get("timezone") == REQUEST_TIMEZONE
+    except (ValueError, KeyError):
+        return False
+
+
 def download_month(year: int, month: int, force: bool = False) -> Path:
     """Fetch, validate and save one month. Safe to run again."""
     dest = build_path(year, month)
     period = f"{year}-{month:02d}"
     if dest.exists() and not force:
-        # Only validated files ever get their final name, so an existing file is complete
-        log.info("Skip: %s already downloaded", dest.name)
-        record_run("weather", period, dest, "skipped", hour_count(dest))
-        return dest
+        if is_current_format(dest):
+            # Only validated files ever get their final name, so an existing file is complete
+            log.info("Skip: %s already downloaded", dest.name)
+            record_run("weather", period, dest, "skipped", hour_count(dest))
+            return dest
+        log.warning("%s was fetched in local time by an older version, downloading again", dest.name)
 
     raw = fetch_month(year, month)
     payload = json.loads(raw)

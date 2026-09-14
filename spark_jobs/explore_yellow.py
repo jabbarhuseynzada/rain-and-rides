@@ -4,37 +4,26 @@ Part 1 (always): compare the schema of every downloaded month, to find schema dr
 Part 2 (--profile): profile one month, to find the bad rows the cleaning job must handle.
 
 Run inside the Airflow container:
-    python spark_jobs/explore_yellow.py
-    python spark_jobs/explore_yellow.py --profile 2025-01
+    python -m spark_jobs.explore_yellow
+    python -m spark_jobs.explore_yellow --profile 2025-01
 """
 from __future__ import annotations
 
 import argparse
-import os
 from collections import defaultdict
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/opt/airflow/data"))
+from spark_jobs.spark_utils import DATA_DIR, get_spark
+
 YELLOW_DIR = DATA_DIR / "bronze" / "tlc" / "yellow"
 PICKUP, DROPOFF = "tpep_pickup_datetime", "tpep_dropoff_datetime"
 
 # From the TLC data dictionary. Code 0 is deliberately left for you to look up.
 PAYMENT_TYPES = {1: "Credit card", 2: "Cash", 3: "No charge", 4: "Dispute", 5: "Unknown", 6: "Voided trip"}
 
-
-def get_spark() -> SparkSession:
-    return (
-        SparkSession.builder
-        .appName("explore_yellow")
-        .master("local[*]")                              # use every CPU core in this container
-        .config("spark.driver.memory", "2g")
-        .config("spark.sql.session.timeZone", "UTC")     # never silently shift timestamps
-        .config("spark.ui.showConsoleProgress", "false")
-        .getOrCreate()
-    )
 
 
 # ---------------------------------------------------------------- part 1: schemas
@@ -154,8 +143,7 @@ def main() -> None:
     parser.add_argument("--profile", metavar="YYYY-MM", help="also profile one month in detail")
     args = parser.parse_args()
 
-    spark = get_spark()
-    spark.sparkContext.setLogLevel("ERROR")  # hide Spark's own INFO/WARN chatter
+    spark = get_spark("explore_yellow")
     try:
         compare_schemas(spark)
         if args.profile:

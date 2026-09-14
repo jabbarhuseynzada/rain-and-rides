@@ -51,27 +51,27 @@ ingest-holidays:
 
 # Explore raw taxi data:  make explore-yellow   or   make explore-yellow PERIOD=2025-01
 explore-yellow:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/explore_yellow.py $(if $(PERIOD),--profile $(PERIOD))
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.explore_yellow $(if $(PERIOD),--profile $(PERIOD))
 
 # Clean one month of trips:  make clean-trips YEAR=2025 MONTH=1
 clean-trips:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/clean_trips.py --year $(YEAR) --month $(MONTH)
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.clean_trips --year $(YEAR) --month $(MONTH)
 
 # Flatten one month of weather:  make flatten-weather YEAR=2025 MONTH=1
 flatten-weather:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/flatten_weather.py --year $(YEAR) --month $(MONTH)
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.flatten_weather --year $(YEAR) --month $(MONTH)
 
 # Load one month of silver into Postgres:  make load-silver YEAR=2025 MONTH=1
 load-silver:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/load_silver.py --year $(YEAR) --month $(MONTH)
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.load_silver --year $(YEAR) --month $(MONTH)
 
 # Load one year of holidays into Postgres:  make load-holidays YEAR=2025
 load-holidays:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/load_silver.py --year $(YEAR) --holidays
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.load_silver --year $(YEAR) --holidays
 
 # Run a Spark job and keep the UI open:  make spark-ui-tour
 spark-ui-tour:
-	$(COMPOSE) exec airflow-scheduler python spark_jobs/ui_tour.py
+	$(COMPOSE) exec airflow-scheduler python -m spark_jobs.ui_tour
 
 # Run any dbt command:  make dbt CMD="debug"   make dbt CMD="build"
 dbt:

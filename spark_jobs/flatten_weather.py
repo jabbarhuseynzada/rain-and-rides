@@ -1,7 +1,7 @@
 """Flatten one month of Open-Meteo weather: bronze JSON -> silver, one row per hour.
 
 Run inside the Airflow container:
-    python spark_jobs/flatten_weather.py --year 2025 --month 1
+    python -m spark_jobs.flatten_weather --year 2025 --month 1
 
 Reads   data/bronze/weather/year=YYYY/month=MM/*.json   hourly values in UTC
 Writes  data/silver/weather/year=YYYY/month=MM/          one row per local New York hour
@@ -17,7 +17,7 @@ import calendar
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, IntegerType, TimestampNTZType
 
-from spark_utils import DATA_DIR, get_spark
+from spark_jobs.spark_utils import DATA_DIR, get_spark
 
 SOURCE_TIMEZONE = "GMT"             # what ingestion/weather.py requests
 LOCAL_TIMEZONE = "America/New_York"  # what the taxi timestamps use
