@@ -14,23 +14,24 @@ Re-running a month replaces that month and nothing else.
 from __future__ import annotations
 
 import argparse
-import os
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from ingestion.db import connect
+from ingestion.db import connect, warehouse_settings
 from spark_jobs.spark_utils import DATA_DIR, get_spark
 
 
 def jdbc_options() -> tuple[str, dict]:
-    host = os.environ.get("WAREHOUSE_HOST", "postgres")
-    port = os.environ.get("WAREHOUSE_PORT", "5432")
-    db = os.environ["WAREHOUSE_DB"]
-    url = f"jdbc:postgresql://{host}:{port}/{db}?reWriteBatchedInserts=true"  # much faster batch inserts
+    """Same credentials as ingestion/db.py: the Airflow connection, or the environment."""
+    settings = warehouse_settings()
+    url = (
+        f"jdbc:postgresql://{settings['host']}:{settings['port']}/{settings['dbname']}"
+        "?reWriteBatchedInserts=true"  # much faster batch inserts
+    )
     props = {
-        "user": os.environ["WAREHOUSE_USER"],
-        "password": os.environ["WAREHOUSE_PASSWORD"],
+        "user": settings["user"],
+        "password": settings["password"],
         "driver": "org.postgresql.Driver",
     }
     return url, props
